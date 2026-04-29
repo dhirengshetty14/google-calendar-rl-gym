@@ -136,7 +136,10 @@ class CaseResult:
 
 def run_case(env: CalendarSchedulingEnv, case_name: str, policy: PolicyFn, seed: int, max_steps: int) -> CaseResult:
     env.max_steps = max_steps
-    obs, info = env.reset(seed=seed)
+    forced = None
+    if case_name.startswith("SCENARIO::"):
+        forced = case_name.split("SCENARIO::", 1)[1]
+    obs, info = env.reset(seed=seed, options={"scenario_name": forced} if forced else None)
 
     terminated = False
     truncated = False
@@ -216,6 +219,13 @@ def main() -> None:
         ("10_fuzz_seed4", random_fuzz_policy_factory(4), 10, 20, "no_assert"),
         ("11_priority_pressure", robust_policy, 13, 18, "should_terminate"),
         ("12_soak_short", robust_policy, 15, 18, "should_terminate"),
+        ("SCENARIO::zero_buffer_chain", robust_policy, 21, 25, "should_terminate"),
+        ("SCENARIO::cross_noon_pressure", robust_policy, 22, 25, "should_terminate"),
+        ("SCENARIO::locked_wall", robust_policy, 23, 25, "no_assert"),
+        ("SCENARIO::long_meeting_tradeoff", robust_policy, 24, 25, "should_terminate"),
+        ("SCENARIO::many_optionals_noise", robust_policy, 25, 25, "should_terminate"),
+        ("SCENARIO::late_day_deadline", robust_policy, 26, 25, "should_terminate"),
+        ("SCENARIO::micro_slot_fragmentation", robust_policy, 27, 25, "no_assert"),
     ]
 
     results: List[CaseResult] = []

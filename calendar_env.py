@@ -106,14 +106,22 @@ class CalendarSchedulingEnv(gym.Env):
         )
         return build("calendar", "v3", credentials=credentials, cache_discovery=False)
 
-    def _execute_with_retries(self, fn, operation_name: str):
+    def _execute_with_retries(
+        self,
+        fn,
+        operation_name: str,
+        ignore_http_statuses: Optional[set] = None,
+    ):
         max_attempts = 6
         base_backoff = 1.8
+        ignored = ignore_http_statuses or set()
         for attempt in range(1, max_attempts + 1):
             try:
                 return fn()
             except HttpError as exc:  # type: ignore[misc]
                 status = getattr(getattr(exc, "resp", None), "status", None)
+                if status in ignored:
+                    return None
                 retriable = status in {429, 500, 502, 503, 504}
                 if retriable and attempt < max_attempts:
                     time.sleep(base_backoff ** attempt)
@@ -191,6 +199,94 @@ class CalendarSchedulingEnv(gym.Env):
                     {"request_id": "R12", "title": "Enterprise Renewal", "duration_min": 60, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 5, "must_schedule": True},
                     {"request_id": "R13", "title": "Bug Triage", "duration_min": 30, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 3, "must_schedule": True},
                     {"request_id": "R14", "title": "Culture Chat", "duration_min": 45, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 1, "must_schedule": False},
+                ],
+            },
+            {
+                "name": "zero_buffer_chain",
+                "seed_events": [
+                    {"title": "A", "start_min": 9 * 60, "end_min": 10 * 60, "locked": True, "priority": 1},
+                    {"title": "B", "start_min": 10 * 60, "end_min": 11 * 60, "locked": True, "priority": 1},
+                    {"title": "C", "start_min": 11 * 60, "end_min": 12 * 60, "locked": True, "priority": 1},
+                    {"title": "D", "start_min": 13 * 60, "end_min": 14 * 60, "locked": True, "priority": 1},
+                    {"title": "E", "start_min": 14 * 60, "end_min": 15 * 60, "locked": True, "priority": 1},
+                ],
+                "requests": [
+                    {"request_id": "R15", "title": "Escalation", "duration_min": 60, "earliest_min": 12 * 60, "latest_min": 17 * 60, "priority": 5, "must_schedule": True},
+                    {"request_id": "R16", "title": "Debrief", "duration_min": 30, "earliest_min": 15 * 60, "latest_min": 17 * 60, "priority": 2, "must_schedule": True},
+                ],
+            },
+            {
+                "name": "cross_noon_pressure",
+                "seed_events": [
+                    {"title": "Morning Ops", "start_min": 9 * 60 + 30, "end_min": 11 * 60, "locked": True, "priority": 2},
+                    {"title": "Lunch", "start_min": 12 * 60, "end_min": 13 * 60, "locked": True, "priority": 1},
+                    {"title": "Townhall", "start_min": 16 * 60, "end_min": 17 * 60, "locked": True, "priority": 3},
+                ],
+                "requests": [
+                    {"request_id": "R17", "title": "Customer Escalation", "duration_min": 90, "earliest_min": 11 * 60, "latest_min": 16 * 60, "priority": 5, "must_schedule": True},
+                    {"request_id": "R18", "title": "Interview", "duration_min": 45, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 3, "must_schedule": True},
+                ],
+            },
+            {
+                "name": "locked_wall",
+                "seed_events": [
+                    {"title": "Block1", "start_min": 9 * 60, "end_min": 10 * 60 + 30, "locked": True, "priority": 1},
+                    {"title": "Block2", "start_min": 10 * 60 + 45, "end_min": 12 * 60 + 30, "locked": True, "priority": 1},
+                    {"title": "Block3", "start_min": 13 * 60, "end_min": 14 * 60 + 30, "locked": True, "priority": 1},
+                    {"title": "Block4", "start_min": 15 * 60, "end_min": 17 * 60, "locked": True, "priority": 1},
+                ],
+                "requests": [
+                    {"request_id": "R19", "title": "War Room", "duration_min": 60, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 5, "must_schedule": True},
+                    {"request_id": "R20", "title": "Retro", "duration_min": 30, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 2, "must_schedule": False},
+                ],
+            },
+            {
+                "name": "long_meeting_tradeoff",
+                "seed_events": [
+                    {"title": "Platform Sync", "start_min": 10 * 60, "end_min": 11 * 60, "locked": False, "priority": 1},
+                    {"title": "Partner Review", "start_min": 13 * 60, "end_min": 14 * 60, "locked": False, "priority": 2},
+                ],
+                "requests": [
+                    {"request_id": "R21", "title": "Quarterly Planning", "duration_min": 120, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 5, "must_schedule": True},
+                    {"request_id": "R22", "title": "Legal Review", "duration_min": 45, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 3, "must_schedule": True},
+                ],
+            },
+            {
+                "name": "many_optionals_noise",
+                "seed_events": [
+                    {"title": "Core Meeting", "start_min": 11 * 60, "end_min": 12 * 60, "locked": True, "priority": 2},
+                ],
+                "requests": [
+                    {"request_id": "R23", "title": "Incident Deep Dive", "duration_min": 60, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 5, "must_schedule": True},
+                    {"request_id": "R24", "title": "Mentoring", "duration_min": 30, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 1, "must_schedule": False},
+                    {"request_id": "R25", "title": "Brainstorm", "duration_min": 30, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 1, "must_schedule": False},
+                    {"request_id": "R26", "title": "Follow-up", "duration_min": 30, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 1, "must_schedule": False},
+                ],
+            },
+            {
+                "name": "late_day_deadline",
+                "seed_events": [
+                    {"title": "Morning Focus", "start_min": 9 * 60, "end_min": 11 * 60, "locked": True, "priority": 1},
+                    {"title": "Afternoon Focus", "start_min": 13 * 60, "end_min": 15 * 60, "locked": True, "priority": 1},
+                ],
+                "requests": [
+                    {"request_id": "R27", "title": "End-of-day Escalation", "duration_min": 45, "earliest_min": 16 * 60, "latest_min": 17 * 60, "priority": 5, "must_schedule": True},
+                    {"request_id": "R28", "title": "Status Review", "duration_min": 30, "earliest_min": 15 * 60, "latest_min": 17 * 60, "priority": 3, "must_schedule": True},
+                ],
+            },
+            {
+                "name": "micro_slot_fragmentation",
+                "seed_events": [
+                    {"title": "Slot1", "start_min": 9 * 60, "end_min": 9 * 60 + 30, "locked": True, "priority": 1},
+                    {"title": "Slot2", "start_min": 10 * 60, "end_min": 10 * 60 + 30, "locked": True, "priority": 1},
+                    {"title": "Slot3", "start_min": 11 * 60, "end_min": 11 * 60 + 30, "locked": True, "priority": 1},
+                    {"title": "Slot4", "start_min": 13 * 60, "end_min": 13 * 60 + 30, "locked": True, "priority": 1},
+                    {"title": "Slot5", "start_min": 14 * 60, "end_min": 14 * 60 + 30, "locked": True, "priority": 1},
+                    {"title": "Slot6", "start_min": 15 * 60, "end_min": 15 * 60 + 30, "locked": True, "priority": 1},
+                ],
+                "requests": [
+                    {"request_id": "R29", "title": "Needs 60 mins", "duration_min": 60, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 4, "must_schedule": True},
+                    {"request_id": "R30", "title": "Needs 30 mins", "duration_min": 30, "earliest_min": 9 * 60, "latest_min": 17 * 60, "priority": 2, "must_schedule": True},
                 ],
             },
         ]
@@ -312,6 +408,7 @@ class CalendarSchedulingEnv(gym.Env):
             .delete(calendarId=self.calendar_id, eventId=event_id, sendUpdates="none")
             .execute(num_retries=0),
             "delete_event",
+            ignore_http_statuses={404},
         )
 
     def _clear_live_managed_events(self) -> None:
@@ -343,8 +440,18 @@ class CalendarSchedulingEnv(gym.Env):
             if not token:
                 break
 
-    def _seed_episode(self) -> None:
-        template = self.np_random.choice(self._scenario_templates())
+    def _seed_episode(self, forced_scenario_name: Optional[str] = None) -> None:
+        templates = self._scenario_templates()
+        template = None
+        if forced_scenario_name:
+            for item in templates:
+                if item["name"] == forced_scenario_name:
+                    template = item
+                    break
+            if template is None:
+                raise ValueError(f"Unknown scenario_name: {forced_scenario_name}")
+        else:
+            template = self.np_random.choice(templates)
         self.scenario_name = str(template["name"])
         self.events = []
         self.requests = [dict(r) for r in template["requests"]]
@@ -607,7 +714,10 @@ class CalendarSchedulingEnv(gym.Env):
         if self.backend == "live":
             time.sleep(self.read_backoff_seconds)
 
-        self._seed_episode()
+        forced_name = None
+        if options and isinstance(options, dict):
+            forced_name = options.get("scenario_name")
+        self._seed_episode(forced_scenario_name=forced_name)
         obs = self._build_observation()
         info = {
             "scenario": self.scenario_name,
